@@ -57,8 +57,8 @@ def _select_carrier_cls(mode: str) -> Type[BaseCarrier]:
     raise ValueError(f"Unknown mode {mode}")
 
 try:
-    import herokutl
-    from herokutl.network.connection.connection import Connection
+    import telethon
+    from telethon.network.connection.connection import Connection
     class ConnectionWebProxy(Connection):
         packet_codec = None
         def __init__(self, ip: str, port: int, dc_id: int, *, loggers, proxy=None, local_addr=None):
