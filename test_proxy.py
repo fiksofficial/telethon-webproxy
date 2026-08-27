@@ -1,6 +1,6 @@
 import asyncio
-from telethon import TelegramClient
-from telethon_webproxy import ConnectionWebProxy
+from herokutl import TelegramClient
+from herokutl_webproxy import ConnectionWebProxy
 
 api_id = 4
 api_hash = '014b35b6184100b085b0d0572f9b5103'

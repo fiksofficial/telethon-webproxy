@@ -7,8 +7,8 @@ pair (or a stream-like object).
 
 Usage::
 
-    from telethon import Client
-    from telethon_webproxy.connector_v2 import make_web_proxy_connector
+    from herokutl import Client
+    from herokutl_webproxy.connector_v2 import make_web_proxy_connector
 
     connector = make_web_proxy_connector(
         host="proxy.example.com",

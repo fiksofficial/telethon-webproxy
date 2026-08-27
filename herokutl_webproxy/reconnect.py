@@ -31,8 +31,8 @@ class ReconnectingCarrier(BaseCarrier):
 
     Usage::
 
-        from telethon_webproxy.carrier import WebSocketCarrier
-        from telethon_webproxy.reconnect import ReconnectingCarrier
+        from herokutl_webproxy.carrier import WebSocketCarrier
+        from herokutl_webproxy.reconnect import ReconnectingCarrier
 
         carrier = ReconnectingCarrier(
             WebSocketCarrier,

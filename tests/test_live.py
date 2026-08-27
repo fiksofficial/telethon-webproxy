@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from telethon_webproxy.carrier import WebSocketCarrier
-from telethon_webproxy.carrier_lanes import WebSocketLanesCarrier
-from telethon_webproxy.carrier_https import HTTPSCarrier
-from telethon_webproxy.mtproxy import MTProxyObfuscator, pack_padded_frame, unpack_padded_frame
+from herokutl_webproxy.carrier import WebSocketCarrier
+from herokutl_webproxy.carrier_lanes import WebSocketLanesCarrier
+from herokutl_webproxy.carrier_https import HTTPSCarrier
+from herokutl_webproxy.mtproxy import MTProxyObfuscator, pack_padded_frame, unpack_padded_frame
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """Tests for the protocol module — capability derivation and frame codec."""
 
-from telethon_webproxy.protocol import (
+from herokutl_webproxy.protocol import (
     FrameType,
     compute_capability,
     compute_capability_from_hex,

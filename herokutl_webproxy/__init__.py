@@ -1,5 +1,5 @@
 """
-telethon-webproxy — Telegram WEB Proxy connector for Telethon.
+herokutl-webproxy — Telegram WEB Proxy connector for Telethon.
 
 Supports all four carrier modes:
   • ``websocket``       — single multiplexed WebSocket (default)
@@ -45,16 +45,16 @@ from .connector_v1 import ConnectionWebProxy
 from .connector_v2 import make_web_proxy_connector, WebProxyStream
 
 # ── Version auto-detect ──────────────────────────────────────────────────────
-_telethon_major: int | None = None
+_herokutl_major: int | None = None
 
 try:
     import importlib.metadata as _meta
-    _tv = _meta.version("telethon")
-    _telethon_major = int(_tv.split(".")[0])
+    _tv = _meta.version("herokutl")
+    _herokutl_major = int(_tv.split(".")[0])
 except Exception:
     pass
 
-if _telethon_major is not None and _telethon_major >= 2:
+if _herokutl_major is not None and _herokutl_major >= 2:
     WebProxyConnector = make_web_proxy_connector
 else:
     WebProxyConnector = ConnectionWebProxy
