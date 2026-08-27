@@ -1,4 +1,4 @@
-# telethon-webproxy
+# herokutl-webproxy
 
 **Telegram WEB Proxy connector for Telethon (v1 & v2).**
 
@@ -11,14 +11,14 @@
 ## Установка
 
 ```bash
-pip install telethon-webproxy
+pip install herokutl-webproxy
 ```
 
 Или с указанием версии Telethon:
 
 ```bash
-pip install "telethon-webproxy[telethon-v1]"   # Telethon 1.x
-pip install "telethon-webproxy[telethon-v2]"   # Telethon 2.x
+pip install "herokutl-webproxy[herokutl-v1]"   # Telethon 1.x
+pip install "herokutl-webproxy[herokutl-v2]"   # Telethon 2.x
 ```
 
 ## Быстрый старт
@@ -27,7 +27,7 @@ pip install "telethon-webproxy[telethon-v2]"   # Telethon 2.x
 
 ```python
 from telethon import TelegramClient
-from telethon_webproxy import ConnectionWebProxy
+from herokutl_webproxy import ConnectionWebProxy
 
 client = TelegramClient(
     "session",
@@ -51,7 +51,7 @@ asyncio.run(main())
 
 ```python
 from telethon import Client
-from telethon_webproxy import make_web_proxy_connector
+from herokutl_webproxy import make_web_proxy_connector
 
 connector = make_web_proxy_connector(
     host="proxy.example.com",
@@ -66,7 +66,7 @@ client = Client("session", api_id, api_hash, connector=connector)
 ### Автоопределение версии
 
 ```python
-from telethon_webproxy import WebProxyConnector
+from herokutl_webproxy import WebProxyConnector
 
 # WebProxyConnector — это ConnectionWebProxy для Telethon v1
 # или make_web_proxy_connector для Telethon v2.
@@ -103,7 +103,7 @@ from telethon_webproxy import WebProxyConnector
 
 ```python
 import asyncio
-from telethon_webproxy import WebSocketCarrier
+from herokutl_webproxy import WebSocketCarrier
 
 async def main():
     carrier = WebSocketCarrier("proxy.example.com", "dd00…")
