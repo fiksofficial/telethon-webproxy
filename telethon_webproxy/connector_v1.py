@@ -8,7 +8,6 @@ from .carrier_base import BaseCarrier
 from .carrier import WebSocketCarrier
 from .carrier_https import HTTPSCarrier
 from .carrier_lanes import WebSocketLanesCarrier
-from .reconnect import ReconnectingCarrier
 from .mtproxy import MTProxyObfuscator, pack_padded_frame, unpack_padded_frame
 
 class _WebProxyCodec:
@@ -84,12 +83,8 @@ try:
             self._options = proxy[2] if len(proxy) > 2 else {}
         async def connect(self, timeout=None, ssl=None):
             mode = self._options.get("mode", "websocket")
-            use_reconnect = self._options.get("reconnect", True)
             carrier_cls = _select_carrier_cls(mode)
-            if use_reconnect:
-                self._carrier = ReconnectingCarrier(carrier_cls, self._proxy_host, self._proxy_secret)
-            else:
-                self._carrier = carrier_cls(self._proxy_host, self._proxy_secret)
+            self._carrier = carrier_cls(self._proxy_host, self._proxy_secret)
             await asyncio.wait_for(self._carrier.connect(), timeout=timeout or 30)
             self._stream_id = await self._carrier.open_stream()
             self._obfuscator = MTProxyObfuscator(bytes.fromhex(self._proxy_secret), dc_idx=self._dc_id)
