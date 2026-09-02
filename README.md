@@ -2,31 +2,31 @@
 
 **Telegram WEB Proxy connector for Telethon (v1 & v2).**
 
-Позволяет подключать [Telethon](https://codeberg.org/Lonami/Telethon) к Telegram через новый тип прокси — **WEB Proxy** (`tdesktop-web-proxy-bridge-v1`), появившийся в Telegram Desktop 7.1.
+Allows connecting [Telethon](https://codeberg.org/Lonami/Telethon) to Telegram through a **WEB Proxy** (`tdesktop-web-proxy-bridge-v1`), introduced in Telegram Desktop 7.1.
 
 > [!IMPORTANT]
-> Библиотека общается с relay-сервером напрямую по WebSocket.
-> **Браузер не нужен.** Потребление памяти — несколько сотен КБ на соединение.
+> The library communicates with the relay server directly over WebSocket.
+> **No browser required.** Memory usage is a few hundred KB per connection.
 
-## Установка
+## Installation
 
 ```bash
 pip install herokutl-webproxy
 ```
 
-Или с указанием версии Telethon:
+Or with a specific Telethon version:
 
 ```bash
 pip install "herokutl-webproxy[herokutl-v1]"   # Telethon 1.x
 pip install "herokutl-webproxy[herokutl-v2]"   # Telethon 2.x
 ```
 
-## Быстрый старт
+## Quick Start
 
 ### Telethon v1
 
 ```python
-from telethon import TelegramClient
+from herokutl import TelegramClient
 from herokutl_webproxy import ConnectionWebProxy
 
 client = TelegramClient(
@@ -34,8 +34,8 @@ client = TelegramClient(
     api_id,
     api_hash,
     connection=ConnectionWebProxy,
-    # Третий элемент кортежа — словарь с опциями (опционально)
-    proxy=("proxy.example.com", "dd00...", {"mode": "websocket-lanes", "reconnect": True}),
+    # Third tuple element is an options dict (optional)
+    proxy=("proxy.example.com", "dd00...", {"mode": "websocket-lanes"}),
 )
 
 async def main():
@@ -50,56 +50,54 @@ asyncio.run(main())
 ### Telethon v2
 
 ```python
-from telethon import Client
+from herokutl import Client
 from herokutl_webproxy import make_web_proxy_connector
 
 connector = make_web_proxy_connector(
     host="proxy.example.com",
     secret_hex="dd00...",
     mode="websocket-lanes",
-    reconnect=True,
 )
 
 client = Client("session", api_id, api_hash, connector=connector)
 ```
 
-### Автоопределение версии
+### Auto-detection
 
 ```python
 from herokutl_webproxy import WebProxyConnector
 
-# WebProxyConnector — это ConnectionWebProxy для Telethon v1
-# или make_web_proxy_connector для Telethon v2.
-# Определяется автоматически при импорте.
+# WebProxyConnector is ConnectionWebProxy for Telethon v1
+# or make_web_proxy_connector for Telethon v2.
+# Detected automatically at import time.
 ```
 
-## Как это работает
+## How It Works
 
 ```
-┌──────────────┐         WSS / HTTPS  ┌───────────────┐        TCP        ┌──────────────┐
-│  Ваш скрипт  │ ◄──────────────────► │  tproxy-server│ ◄───────────────► │   Telegram   │
-│  (Telethon)  │   Фреймы протокола   │  (relay)      │   MTProto         │   DC         │
-└──────────────┘    WEB Proxy v1      └───────────────┘                   └──────────────┘
+┌──────────────┐       WSS / HTTPS    ┌───────────────┐      TCP       ┌──────────────┐
+│  Your script │ ◄──────────────────► │  tproxy-server│ ◄────────────► │   Telegram   │
+│  (Telethon)  │   WEB Proxy v1 frames│  (relay)      │   MTProto      │   DC         │
+└──────────────┘                      └───────────────┘                └──────────────┘
 ```
 
-1. Библиотека вычисляет `capability` — HMAC-SHA256 от секрета и домена.
-2. Запрашивает bridge-страницу (`GET /?bridge=<cap>`) и извлекает bootstrap-токен.
-3. Создает сессию (`POST /api/v1/session`) и получает session-токен.
-4. Открывает выбранный транспорт (WSS мультиплекс, WSS на каждый поток, или HTTP long-polling).
-5. Мультиплексирует MTProto-потоки через фреймы OPEN/DATA/CLOSE/WINDOW.
+1. The library computes a `capability` — HMAC-SHA256 of the secret and the domain.
+2. Fetches the bridge page (`GET /?bridge=<cap>`) and extracts the bootstrap token.
+3. Creates a session (`POST /api/v1/session`) and receives a session token.
+4. Opens the selected transport (WSS multiplex, WSS per stream, or HTTP long-polling).
+5. Multiplexes MTProto streams through OPEN/DATA/CLOSE/WINDOW frames.
 
-## Параметры прокси
+## Proxy Options
 
-| Параметр | Описание |
-|:---------|:---------|
-| `host` | Доменное имя WEB-прокси сервера (например `proxy.example.com`) |
-| `secret_hex` | Hex-строка секрета MTProxy. Если не начинается с `dd`, библиотека добавит его. |
-| `mode` | Режим работы: `websocket` (по умолч.), `websocket-lanes`, `https`. |
-| `reconnect`| Автоматическое переподключение при обрыве сети (по умолч. `True`). |
+| Parameter | Description |
+|:----------|:------------|
+| `host` | Domain name of the WEB proxy server (e.g. `proxy.example.com`) |
+| `secret_hex` | Hex string of the MTProxy secret. If it doesn't start with `dd`, the library adds it. |
+| `mode` | Transport mode: `websocket` (default), `websocket-lanes`, `https`. |
 
-## Низкоуровневый API
+## Low-Level API
 
-Если вам не нужна интеграция с Telethon, используйте `WebSocketCarrier` напрямую:
+If you don't need Telethon integration, use `WebSocketCarrier` directly:
 
 ```python
 import asyncio
@@ -110,7 +108,7 @@ async def main():
     await carrier.connect()
 
     stream_id = await carrier.open_stream()
-    await carrier.send_data(stream_id, b"\\x00\\x00\\x00\\x00...")  # raw MTProto
+    await carrier.send_data(stream_id, b"\x00\x00\x00\x00...")  # raw MTProto
     response = await carrier.recv_data(stream_id)
 
     await carrier.close_stream(stream_id)
@@ -119,18 +117,18 @@ async def main():
 asyncio.run(main())
 ```
 
-## Поддерживаемые серверы
+## Supported Servers
 
-- [telegramdesktop/tproxy-server](https://github.com/telegramdesktop/tproxy-server) — эталонная реализация на Go (от команды Telegram)
-- [sleep3r/mtproto.zig](https://github.com/sleep3r/mtproto.zig) — высокопроизводительная реализация на Zig
+- [telegramdesktop/tproxy-server](https://github.com/telegramdesktop/tproxy-server) — reference Go implementation by the Telegram team
+- [sleep3r/mtproto.zig](https://github.com/sleep3r/mtproto.zig) — high-performance Zig implementation
 
-## Тестирование
+## Testing
 
 ```bash
 pip install -e ".[dev]"
 pytest tests/
 ```
 
-## Лицензия
+## License
 
 MIT
