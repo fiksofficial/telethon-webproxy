@@ -10,7 +10,7 @@ Supports all four carrier modes:
 
 from __future__ import annotations
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # ── Protocol core ─────────────────────────────────────────────────────────────
 from .protocol import (
@@ -42,16 +42,21 @@ from .connector_v1 import ConnectionWebProxy
 from .connector_v2 import make_web_proxy_connector, WebProxyStream
 
 # ── Version auto-detect ──────────────────────────────────────────────────────
-_herokutl_major: int | None = None
+_telethon_major: int | None = None
 
 try:
     import importlib.metadata as _meta
-    _tv = _meta.version("herokutl")
-    _herokutl_major = int(_tv.split(".")[0])
+    _tv = _meta.version("telethon")
+    _telethon_major = int(_tv.split(".")[0])
 except Exception:
-    pass
+    try:
+        import importlib.metadata as _meta
+        _tv = _meta.version("herokutl")
+        _telethon_major = int(_tv.split(".")[0])
+    except Exception:
+        pass
 
-if _herokutl_major is not None and _herokutl_major >= 2:
+if _telethon_major is not None and _telethon_major >= 2:
     WebProxyConnector = make_web_proxy_connector
 else:
     WebProxyConnector = ConnectionWebProxy
