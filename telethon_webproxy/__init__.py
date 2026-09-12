@@ -6,13 +6,11 @@ Supports all four carrier modes:
   • ``websocket-lanes`` — one WebSocket per stream (best isolation)
   • ``https``           — HTTP long-polling (widest compatibility)
   • ``https-lanes``     — per-stream HTTP long-polling
-
-Auto-reconnect is available via :class:`ReconnectingCarrier`.
 """
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.1.2"
 
 # ── Protocol core ─────────────────────────────────────────────────────────────
 from .protocol import (
@@ -38,7 +36,6 @@ from .carrier_base import (
 from .carrier import WebSocketCarrier
 from .carrier_https import HTTPSCarrier
 from .carrier_lanes import WebSocketLanesCarrier
-from .reconnect import ReconnectingCarrier
 
 # ── Telethon connectors ──────────────────────────────────────────────────────
 from .connector_v1 import ConnectionWebProxy
@@ -69,7 +66,7 @@ __all__ = [
     "StreamClosedError", "RelayByeError",
     # Carriers
     "WebSocketCarrier", "HTTPSCarrier",
-    "WebSocketLanesCarrier", "ReconnectingCarrier",
+    "WebSocketLanesCarrier",
     # Telethon connectors
     "ConnectionWebProxy", "make_web_proxy_connector",
     "WebProxyStream", "WebProxyConnector",

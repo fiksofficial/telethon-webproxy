@@ -70,9 +70,13 @@ class WebSocketLanesCarrier(BaseCarrier):
         log.info("WebSocket-lanes carrier ready on %s", self._session_info.host)
 
     async def _stop_transport(self) -> None:
-        for lane in list(self._lanes.values()):
-            await self._close_lane(lane)
+        lanes = list(self._lanes.values())
         self._lanes.clear()
+        for lane in lanes:
+            try:
+                await asyncio.shield(self._close_lane(lane))
+            except (Exception, asyncio.CancelledError):
+                pass
 
     # ── Stream operations ─────────────────────────────────────────────────
 
@@ -157,14 +161,18 @@ class WebSocketLanesCarrier(BaseCarrier):
     # ── Lane internals ────────────────────────────────────────────────────
 
     async def _close_lane(self, lane: _LaneSocket) -> None:
-        if lane.reader_task:
+        if lane.reader_task and not lane.reader_task.done():
             lane.reader_task.cancel()
             try:
                 await lane.reader_task
             except (asyncio.CancelledError, Exception):
                 pass
+            lane.reader_task = None
         if not lane.ws.closed:
-            await lane.ws.close()
+            try:
+                await asyncio.shield(lane.ws.close())
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def _lane_reader(self, lane: _LaneSocket) -> None:
         """Per-lane background reader."""

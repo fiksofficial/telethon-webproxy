@@ -62,7 +62,7 @@ class WebSocketCarrier(BaseCarrier):
         log.info("WebSocket carrier connected to %s", si.host)
 
     async def _stop_transport(self) -> None:
-        if self._reader_task:
+        if self._reader_task and not self._reader_task.done():
             self._reader_task.cancel()
             try:
                 await self._reader_task
@@ -70,7 +70,10 @@ class WebSocketCarrier(BaseCarrier):
                 pass
             self._reader_task = None
         if self._ws and not self._ws.closed:
-            await self._ws.close()
+            try:
+                await asyncio.shield(self._ws.close())
+            except (asyncio.CancelledError, Exception):
+                pass
         self._ws = None
 
     # ── Stream operations ─────────────────────────────────────────────────
@@ -124,7 +127,10 @@ class WebSocketCarrier(BaseCarrier):
             log.warning("WebSocket reader error: %s", exc)
         finally:
             if self._connected:
-                await self.disconnect()
+                try:
+                    await asyncio.shield(self.disconnect())
+                except (Exception, asyncio.CancelledError):
+                    pass
 
     async def _on_batch(self, data: bytes) -> None:
         try:

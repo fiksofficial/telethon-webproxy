@@ -85,31 +85,58 @@ try:
             mode = self._options.get("mode", "websocket")
             carrier_cls = _select_carrier_cls(mode)
             self._carrier = carrier_cls(self._proxy_host, self._proxy_secret)
-            await asyncio.wait_for(self._carrier.connect(), timeout=timeout or 30)
-            self._stream_id = await self._carrier.open_stream()
-            self._obfuscator = MTProxyObfuscator(bytes.fromhex(self._proxy_secret), dc_idx=self._dc_id)
-            await self._carrier.send_data(self._stream_id, self._obfuscator.header)
-            self._reader = _WebProxyReader(self._carrier, self._stream_id, self._obfuscator)
-            self._codec = _WebProxyCodec(self)
-            self._connected = True
-            loop = asyncio.get_running_loop()
-            self._send_task = loop.create_task(self._send_loop())
-            self._recv_task = loop.create_task(self._recv_loop())
+            try:
+                await asyncio.wait_for(self._carrier.connect(), timeout=timeout or 30)
+                self._stream_id = await self._carrier.open_stream()
+                self._obfuscator = MTProxyObfuscator(bytes.fromhex(self._proxy_secret), dc_idx=self._dc_id)
+                await self._carrier.send_data(self._stream_id, self._obfuscator.header)
+                self._reader = _WebProxyReader(self._carrier, self._stream_id, self._obfuscator)
+                self._codec = _WebProxyCodec(self)
+                self._connected = True
+                loop = asyncio.get_running_loop()
+                self._send_task = loop.create_task(self._send_loop())
+                self._recv_task = loop.create_task(self._recv_loop())
+            except BaseException:
+                try:
+                    await asyncio.shield(self.disconnect())
+                except (Exception, asyncio.CancelledError):
+                    pass
+                raise
         async def disconnect(self):
             self._connected = False
+            cur_task = None
+            try:
+                cur_task = asyncio.current_task()
+            except Exception:
+                pass
+
             for task in (self._send_task, self._recv_task):
-                if task:
+                if task and task is not cur_task and not task.done():
                     task.cancel()
                     try:
                         await task
-                    except Exception: pass
-            if self._carrier:
-                if self._stream_id is not None:
+                    except (Exception, asyncio.CancelledError):
+                        pass
+            self._send_task = None
+            self._recv_task = None
+
+            carrier = self._carrier
+            self._carrier = None
+            stream_id = self._stream_id
+            self._stream_id = None
+
+            if carrier:
+                try:
+                    if stream_id is not None:
+                        try:
+                            await asyncio.shield(carrier.close_stream(stream_id))
+                        except (Exception, asyncio.CancelledError):
+                            pass
+                finally:
                     try:
-                        await self._carrier.close_stream(self._stream_id)
-                    except Exception: pass
-                await self._carrier.disconnect()
-                self._carrier = None
+                        await asyncio.shield(carrier.disconnect())
+                    except (Exception, asyncio.CancelledError):
+                        pass
         def send(self, data):
             if not self._connected:
                 raise ConnectionError("Not connected")
@@ -129,11 +156,17 @@ try:
                     encoded = self._codec.encode_packet(data)
                     await self._carrier.send_data(self._stream_id, encoded)
                     self._log.debug(f"SENT {len(encoded)} BYTES! {encoded.hex()[:32]}...")
-            except asyncio.CancelledError: pass
+            except asyncio.CancelledError:
+                pass
             except Exception as e:
-                self._log.warning(f"CRASH IN RECV: {e}")
+                self._log.warning(f"CRASH IN SEND: {e}")
                 self._log.info("Send loop error: %s", e)
-                await self.disconnect()
+            finally:
+                if self._connected:
+                    try:
+                        await self.disconnect()
+                    except (Exception, asyncio.CancelledError):
+                        pass
         async def _recv_loop(self):
             try:
                 while self._connected:
@@ -145,14 +178,18 @@ try:
                         if isinstance(e, StreamClosedError):
                             e = ConnectionError(str(e))
                         await self._recv_queue.put((None, e))
-                        await self.disconnect()
                         return
                     else:
                         self._log.debug(f"RECV {len(data)} BYTES!")
                         await self._recv_queue.put((data, None))
-            except asyncio.CancelledError: pass
+            except asyncio.CancelledError:
+                pass
             finally:
-                await self.disconnect()
+                if self._connected:
+                    try:
+                        await self.disconnect()
+                    except (Exception, asyncio.CancelledError):
+                        pass
         def __str__(self):
             return f"{self._proxy_host}/WebProxy"
 except ImportError:
