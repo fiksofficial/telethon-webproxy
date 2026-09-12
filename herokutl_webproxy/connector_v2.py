@@ -14,7 +14,6 @@ Usage::
         host="proxy.example.com",
         secret_hex="dd0011…secret…",
         mode="websocket-lanes",
-        reconnect=True,
     )
     client = Client("session", api_id, api_hash, connector=connector)
 """
@@ -125,8 +124,21 @@ class WebProxyStream:
         """Close this stream and the underlying carrier."""
         if not self._closed:
             self._closed = True
-            await self._carrier.close_stream(self._stream_id)
-            await self._carrier.disconnect()
+            carrier = self._carrier
+            stream_id = self._stream_id
+            self._carrier = None
+            if carrier:
+                try:
+                    if stream_id is not None:
+                        try:
+                            await asyncio.shield(carrier.close_stream(stream_id))
+                        except (Exception, asyncio.CancelledError):
+                            pass
+                finally:
+                    try:
+                        await asyncio.shield(carrier.disconnect())
+                    except (Exception, asyncio.CancelledError):
+                        pass
 
 
 def make_web_proxy_connector(
@@ -134,7 +146,6 @@ def make_web_proxy_connector(
     secret_hex: str,
     *,
     mode: str = "websocket",
-    reconnect: bool = True,
 ):
     """Return an async connector function suitable for ``Client(connector=…)``.
 
@@ -145,15 +156,18 @@ def make_web_proxy_connector(
     carrier_cls = _select_carrier_cls(mode)
 
     async def connector(ip: str, port: int, **kwargs):
-        if reconnect:
-            carrier = ReconnectingCarrier(carrier_cls, host, secret_hex)
-        else:
-            carrier = carrier_cls(host, secret_hex)
-
-        await carrier.connect()
-        stream_id = await carrier.open_stream()
-        stream = WebProxyStream(carrier, stream_id)
-        # Telethon v2 expects (reader, writer) — our stream is both
-        return stream, stream
+        carrier = carrier_cls(host, secret_hex)
+        try:
+            await carrier.connect()
+            stream_id = await carrier.open_stream()
+            stream = WebProxyStream(carrier, stream_id)
+            # Telethon v2 expects (reader, writer) — our stream is both
+            return stream, stream
+        except BaseException:
+            try:
+                await asyncio.shield(carrier.disconnect())
+            except (Exception, asyncio.CancelledError):
+                pass
+            raise
 
     return connector

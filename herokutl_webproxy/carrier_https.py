@@ -65,7 +65,7 @@ class HTTPSCarrier(BaseCarrier):
         log.info("HTTPS carrier connected to %s", si.host)
 
     async def _stop_transport(self) -> None:
-        if self._poll_task:
+        if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             try:
                 await self._poll_task
@@ -166,7 +166,10 @@ class HTTPSCarrier(BaseCarrier):
             log.warning("HTTPS poll loop error: %s", exc)
         finally:
             if self._connected:
-                await self.disconnect()
+                try:
+                    await asyncio.shield(self.disconnect())
+                except (Exception, asyncio.CancelledError):
+                    pass
 
     async def _on_batch(self, data: bytes) -> None:
         """Dispatch a downlink frame batch."""

@@ -296,8 +296,12 @@ class BaseCarrier(StreamManager, abc.ABC):
             )
             await self._start_transport()
             self._connected = True
-        except Exception:
-            await self._http.close()
+        except BaseException:
+            if self._http and not self._http.closed:
+                try:
+                    await asyncio.shield(self._http.close())
+                except (Exception, asyncio.CancelledError):
+                    pass
             self._http = None
             raise
 
@@ -305,12 +309,15 @@ class BaseCarrier(StreamManager, abc.ABC):
         """Tear down everything."""
         self._connected = False
         try:
-            await self._stop_transport()
-        except Exception:
+            await asyncio.shield(self._stop_transport())
+        except (Exception, asyncio.CancelledError):
             pass
         self._clear_streams()
         if self._http and not self._http.closed:
-            await self._http.close()
+            try:
+                await asyncio.shield(self._http.close())
+            except (Exception, asyncio.CancelledError):
+                pass
         self._http = None
         self._session_info = None
 
