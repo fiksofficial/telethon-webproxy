@@ -44,15 +44,12 @@ from .connector_v2 import make_web_proxy_connector, WebProxyStream
 # ── Version auto-detect ──────────────────────────────────────────────────────
 _telethon_major: int | None = None
 
-try:
-    import importlib.metadata as _meta
-    _tv = _meta.version("telethon")
-    _telethon_major = int(_tv.split(".")[0])
-except Exception:
+for _pkg in ("telethon", "herokutl", "hikkatl"):
     try:
         import importlib.metadata as _meta
-        _tv = _meta.version("herokutl")
+        _tv = _meta.version(_pkg)
         _telethon_major = int(_tv.split(".")[0])
+        break
     except Exception:
         pass
 
