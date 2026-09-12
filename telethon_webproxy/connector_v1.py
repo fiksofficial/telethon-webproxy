@@ -55,12 +55,28 @@ def _select_carrier_cls(mode: str) -> Type[BaseCarrier]:
     elif mode in ("https", "https-lanes"): return HTTPSCarrier
     raise ValueError(f"Unknown mode {mode}")
 
+_TELETHON_FOUND = True
 try:
-    import telethon
     from telethon.network.connection.connection import Connection
-    class ConnectionWebProxy(Connection):
-        packet_codec = None
-        def __init__(self, ip: str, port: int, dc_id: int, *, loggers, proxy=None, local_addr=None):
+except ImportError:
+    try:
+        from herokutl.network.connection.connection import Connection
+    except ImportError:
+        try:
+            from hikkatl.network.connection.connection import Connection
+        except ImportError:
+            _TELETHON_FOUND = False
+            class Connection:
+                packet_codec = None
+
+class ConnectionWebProxy(Connection):
+    packet_codec = None
+    def __init__(self, ip: str, port: int, dc_id: int, *, loggers=None, proxy=None, local_addr=None):
+        if not _TELETHON_FOUND:
+            raise ImportError(
+                "Neither telethon nor herokutl is installed. "
+                "Please install telethon or herokutl to use ConnectionWebProxy."
+            )
             self._ip = ip
             self._port = port
             self._dc_id = dc_id
@@ -192,5 +208,3 @@ try:
                         pass
         def __str__(self):
             return f"{self._proxy_host}/WebProxy"
-except ImportError:
-    pass

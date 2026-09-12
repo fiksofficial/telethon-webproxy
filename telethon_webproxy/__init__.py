@@ -10,7 +10,7 @@ Supports all four carrier modes:
 
 from __future__ import annotations
 
-__version__ = "0.1.2"
+__version__ = "0.1.4"
 
 # ── Protocol core ─────────────────────────────────────────────────────────────
 from .protocol import (
@@ -44,12 +44,14 @@ from .connector_v2 import make_web_proxy_connector, WebProxyStream
 # ── Version auto-detect ──────────────────────────────────────────────────────
 _telethon_major: int | None = None
 
-try:
-    import importlib.metadata as _meta
-    _tv = _meta.version("telethon")
-    _telethon_major = int(_tv.split(".")[0])
-except Exception:
-    pass
+for _pkg in ("telethon", "herokutl", "hikkatl"):
+    try:
+        import importlib.metadata as _meta
+        _tv = _meta.version(_pkg)
+        _telethon_major = int(_tv.split(".")[0])
+        break
+    except Exception:
+        pass
 
 if _telethon_major is not None and _telethon_major >= 2:
     WebProxyConnector = make_web_proxy_connector
