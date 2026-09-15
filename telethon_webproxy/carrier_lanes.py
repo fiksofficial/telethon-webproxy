@@ -149,6 +149,14 @@ class WebSocketLanesCarrier(BaseCarrier):
                 await lane.ws.send_bytes(grant)
         return data
 
+    async def grant_window(self, stream_id: int, amount: int) -> None:
+        lane = self._lanes.get(stream_id)
+        if lane and not lane.ws.closed:
+            try:
+                await lane.ws.send_bytes(encode_window(stream_id, amount))
+            except Exception:
+                pass
+
     async def _send_control(self, frame_bytes: bytes) -> None:
         # Control frames (WINDOW, PONG) go to the relevant lane
         # Parse the stream_id from the frame to route it

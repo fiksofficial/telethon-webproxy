@@ -20,6 +20,7 @@ from .protocol import (
     WS_UPGRADE_PATH,
     FrameType,
     encode_frame,
+    encode_window,
     parse_frames,
 )
 
@@ -97,6 +98,13 @@ class WebSocketCarrier(BaseCarrier):
             self._send_windows[stream_id] -= len(chunk)
             await self._ws_send(encode_frame(FrameType.DATA, stream_id, chunk))
             offset += chunk_size
+
+    async def grant_window(self, stream_id: int, amount: int) -> None:
+        if self._ws and not self._ws.closed:
+            try:
+                await self._ws.send_bytes(encode_window(stream_id, amount))
+            except Exception:
+                pass
 
     async def _send_control(self, frame_bytes: bytes) -> None:
         await self._ws_send(frame_bytes)
