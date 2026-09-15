@@ -10,6 +10,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import logging
+import random
 import re
 import ssl
 from typing import Optional
@@ -200,49 +201,72 @@ async def bootstrap_session(
     cap = compute_capability_from_hex(host, secret_hex)
     base_url = f"https://{host}"
 
-    # 1) Bridge page
-    async with session.get(
-        f"{base_url}/?bridge={cap}",
-        ssl=ssl_ctx,
-    ) as resp:
-        if resp.status != 200:
-            raise HandshakeError(f"Bridge page returned HTTP {resp.status}")
-        body = await resp.read()
-        bootstrap = _extract_bootstrap(body, cap)
-        if not bootstrap:
-            raise HandshakeError("Could not extract bootstrap token from bridge page")
+    for attempt in range(6):
+        # 1) Bridge page
+        async with session.get(
+            f"{base_url}/?bridge={cap}",
+            ssl=ssl_ctx,
+        ) as resp:
+            if resp.status in (503, 429) and attempt < 5:
+                ra = 1.0
+                try:
+                    ra = float(resp.headers.get("Retry-After", 1))
+                except (ValueError, TypeError):
+                    pass
+                log.info("Bridge page returned %d, retrying in %.1fs...", resp.status, ra)
+                await asyncio.sleep(ra + random.uniform(0.1, 0.5))
+                continue
 
-    # 2) Session creation
-    async with session.post(
-        f"{base_url}{SESSION_PATH}",
-        headers={
-            "Authorization": f"Bearer {bootstrap}",
-            "Content-Type": "application/octet-stream",
-        },
-        data=encode_hello(),
-        ssl=ssl_ctx,
-    ) as resp:
-        if resp.status != 200:
-            raise HandshakeError(f"Session creation returned HTTP {resp.status}")
+            if resp.status != 200:
+                raise HandshakeError(f"Bridge page returned HTTP {resp.status}")
+            body = await resp.read()
+            bootstrap = _extract_bootstrap(body, cap)
+            if not bootstrap:
+                raise HandshakeError("Could not extract bootstrap token from bridge page")
 
-        token = resp.headers.get("X-Session-Token")
-        carrier_mode = resp.headers.get("X-Carrier-Mode", "https")
-        welcome_body = await resp.read()
+        # 2) Session creation
+        async with session.post(
+            f"{base_url}{SESSION_PATH}",
+            headers={
+                "Authorization": f"Bearer {bootstrap}",
+                "Content-Type": "application/octet-stream",
+            },
+            data=encode_hello(),
+            ssl=ssl_ctx,
+        ) as resp:
+            if resp.status in (503, 429) and attempt < 5:
+                ra = 1.0
+                try:
+                    ra = float(resp.headers.get("Retry-After", 1))
+                except (ValueError, TypeError):
+                    pass
+                log.info("Relay returned %d, retrying session creation in %.1fs...", resp.status, ra)
+                await asyncio.sleep(ra + random.uniform(0.1, 0.5))
+                continue
 
-        frames = parse_frames(welcome_body)
-        if (
-            len(frames) != 1
-            or frames[0].type != FrameType.WELCOME
-            or frames[0].stream_id != 0
-        ):
-            raise HandshakeError("Invalid WELCOME from relay")
+            if resp.status != 200:
+                raise HandshakeError(f"Session creation returned HTTP {resp.status}")
 
-    log.info(
-        "Session bootstrapped (mode=%s, token=%s…)",
-        carrier_mode,
-        token[:8] if token else "?",
-    )
-    return SessionInfo(token, carrier_mode, base_url, host)
+            token = resp.headers.get("X-Session-Token")
+            carrier_mode = resp.headers.get("X-Carrier-Mode", "https")
+            welcome_body = await resp.read()
+
+            frames = parse_frames(welcome_body)
+            if (
+                len(frames) != 1
+                or frames[0].type != FrameType.WELCOME
+                or frames[0].stream_id != 0
+            ):
+                raise HandshakeError("Invalid WELCOME from relay")
+
+            log.info(
+                "Session bootstrapped (mode=%s, token=%s…)",
+                carrier_mode,
+                token[:8] if token else "?",
+            )
+            return SessionInfo(token, carrier_mode, base_url, host)
+
+    raise HandshakeError("Failed to bootstrap session after multiple attempts")
 
 
 def _extract_bootstrap(page_body: bytes, bridge_cap: str) -> Optional[str]:
