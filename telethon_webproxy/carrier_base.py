@@ -255,10 +255,9 @@ async def bootstrap_session(
                         ra = float(resp.headers.get("Retry-After", 1))
                     except (ValueError, TypeError):
                         pass
-                    wait_time = max(ra, delay) + random.uniform(0.1, 0.4)
+                    wait_time = ra + random.uniform(0.05, 0.25)
                     log.info("Relay returned %d, retrying session creation in %.1fs...", resp.status, wait_time)
                     await asyncio.sleep(wait_time)
-                    delay = min(delay * 2, 5.0)
                     continue
 
                 if resp.status != 200:
