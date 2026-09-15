@@ -8,14 +8,14 @@ from .carrier_base import BaseCarrier
 from .carrier import WebSocketCarrier
 from .carrier_https import HTTPSCarrier
 from .carrier_lanes import WebSocketLanesCarrier
-from .mtproxy import MTProxyObfuscator, pack_padded_frame, unpack_padded_frame
+from .mtproxy import MTProxyObfuscator, pack_frame, unpack_frame
 
 class _WebProxyCodec:
     tag = None
     def __init__(self, connection):
         self._conn = connection
     def encode_packet(self, data: bytes) -> bytes:
-        frame = pack_padded_frame(data)
+        frame = pack_frame(data, self._conn._obfuscator.is_randomized)
         return self._conn._obfuscator.encrypt(frame)
     async def read_packet(self, reader) -> bytes:
         return await reader.read()
@@ -34,15 +34,15 @@ class _WebProxyReader:
                 if len(self._buffer) >= total:
                     frame_body = bytes(self._buffer[4:total])
                     del self._buffer[:total]
-                    return unpack_padded_frame(frame_body)
+                    return unpack_frame(frame_body, self._obfuscator.is_randomized)
             chunk = await self._carrier.recv_data(self._stream_id)
-            import logging; logging.debug(f"CARRIER RECV CHUNK: {len(chunk)}")
+            await self._carrier.grant_window(self._stream_id, len(chunk))
             decrypted_chunk = self._obfuscator.decrypt(chunk)
             self._buffer.extend(decrypted_chunk)
     async def readexactly(self, n: int) -> bytes:
         while len(self._buffer) < n:
             chunk = await self._carrier.recv_data(self._stream_id)
-            import logging; logging.debug(f"CARRIER RECV CHUNK: {len(chunk)}")
+            await self._carrier.grant_window(self._stream_id, len(chunk))
             decrypted_chunk = self._obfuscator.decrypt(chunk)
             self._buffer.extend(decrypted_chunk)
         result = bytes(self._buffer[:n])

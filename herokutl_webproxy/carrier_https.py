@@ -24,6 +24,7 @@ from .protocol import (
     DOWN_PATH,
     FrameType,
     encode_frame,
+    encode_window,
     parse_frames,
 )
 
@@ -94,6 +95,12 @@ class HTTPSCarrier(BaseCarrier):
             self._send_windows[stream_id] -= len(chunk)
             await self._send_up(encode_frame(FrameType.DATA, stream_id, chunk))
             offset += chunk_size
+
+    async def grant_window(self, stream_id: int, amount: int) -> None:
+        try:
+            await self._send_up(encode_window(stream_id, amount))
+        except Exception:
+            pass
 
     async def _send_control(self, frame_bytes: bytes) -> None:
         await self._send_up(frame_bytes)

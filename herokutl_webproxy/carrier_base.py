@@ -200,73 +200,93 @@ async def bootstrap_session(
     """
     cap = compute_capability_from_hex(host, secret_hex)
     base_url = f"https://{host}"
+    deadline = time.time() + 90.0
 
-    for attempt in range(6):
-        # 1) Bridge page
-        async with session.get(
-            f"{base_url}/?bridge={cap}",
-            ssl=ssl_ctx,
-        ) as resp:
-            if resp.status in (503, 429) and attempt < 5:
-                ra = 1.0
-                try:
-                    ra = float(resp.headers.get("Retry-After", 1))
-                except (ValueError, TypeError):
-                    pass
-                log.info("Bridge page returned %d, retrying in %.1fs...", resp.status, ra)
-                await asyncio.sleep(ra + random.uniform(0.1, 0.5))
-                continue
+    # 1) Bridge page (fetch bootstrap token once)
+    bootstrap = None
+    while time.time() < deadline:
+        try:
+            async with session.get(
+                f"{base_url}/?bridge={cap}",
+                ssl=ssl_ctx,
+            ) as resp:
+                if resp.status in (503, 429):
+                    ra = 1.0
+                    try:
+                        ra = float(resp.headers.get("Retry-After", 1))
+                    except (ValueError, TypeError):
+                        pass
+                    log.info("Bridge page returned %d, retrying in %.1fs...", resp.status, ra)
+                    await asyncio.sleep(ra + random.uniform(0.1, 0.4))
+                    continue
 
-            if resp.status != 200:
-                raise HandshakeError(f"Bridge page returned HTTP {resp.status}")
-            body = await resp.read()
-            bootstrap = _extract_bootstrap(body, cap)
-            if not bootstrap:
-                raise HandshakeError("Could not extract bootstrap token from bridge page")
+                if resp.status != 200:
+                    raise HandshakeError(f"Bridge page returned HTTP {resp.status}")
+                body = await resp.read()
+                bootstrap = _extract_bootstrap(body, cap)
+                if not bootstrap:
+                    raise HandshakeError("Could not extract bootstrap token from bridge page")
+                break
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await asyncio.sleep(1.0 + random.uniform(0.1, 0.5))
+            continue
 
-        # 2) Session creation
-        async with session.post(
-            f"{base_url}{SESSION_PATH}",
-            headers={
-                "Authorization": f"Bearer {bootstrap}",
-                "Content-Type": "application/octet-stream",
-            },
-            data=encode_hello(),
-            ssl=ssl_ctx,
-        ) as resp:
-            if resp.status in (503, 429) and attempt < 5:
-                ra = 1.0
-                try:
-                    ra = float(resp.headers.get("Retry-After", 1))
-                except (ValueError, TypeError):
-                    pass
-                log.info("Relay returned %d, retrying session creation in %.1fs...", resp.status, ra)
-                await asyncio.sleep(ra + random.uniform(0.1, 0.5))
-                continue
+    if not bootstrap:
+        raise HandshakeError("Failed to obtain bootstrap token within deadline")
 
-            if resp.status != 200:
-                raise HandshakeError(f"Session creation returned HTTP {resp.status}")
+    # 2) Session creation with the same bootstrap token (up to 90s deadline)
+    hello_frame = encode_hello()
+    delay = 0.25
+    while time.time() < deadline:
+        try:
+            async with session.post(
+                f"{base_url}{SESSION_PATH}",
+                headers={
+                    "Authorization": f"Bearer {bootstrap}",
+                    "Content-Type": "application/octet-stream",
+                    "Origin": f"https://{host}",
+                },
+                data=hello_frame,
+                ssl=ssl_ctx,
+            ) as resp:
+                if resp.status in (503, 429):
+                    ra = 1.0
+                    try:
+                        ra = float(resp.headers.get("Retry-After", 1))
+                    except (ValueError, TypeError):
+                        pass
+                    wait_time = max(ra, delay) + random.uniform(0.1, 0.4)
+                    log.info("Relay returned %d, retrying session creation in %.1fs...", resp.status, wait_time)
+                    await asyncio.sleep(wait_time)
+                    delay = min(delay * 2, 5.0)
+                    continue
 
-            token = resp.headers.get("X-Session-Token")
-            carrier_mode = resp.headers.get("X-Carrier-Mode", "https")
-            welcome_body = await resp.read()
+                if resp.status != 200:
+                    raise HandshakeError(f"Session creation returned HTTP {resp.status}")
 
-            frames = parse_frames(welcome_body)
-            if (
-                len(frames) != 1
-                or frames[0].type != FrameType.WELCOME
-                or frames[0].stream_id != 0
-            ):
-                raise HandshakeError("Invalid WELCOME from relay")
+                token = resp.headers.get("X-Session-Token")
+                carrier_mode = resp.headers.get("X-Carrier-Mode", "https")
+                welcome_body = await resp.read()
 
-            log.info(
-                "Session bootstrapped (mode=%s, token=%s…)",
-                carrier_mode,
-                token[:8] if token else "?",
-            )
-            return SessionInfo(token, carrier_mode, base_url, host)
+                frames = parse_frames(welcome_body)
+                if (
+                    len(frames) != 1
+                    or frames[0].type != FrameType.WELCOME
+                    or frames[0].stream_id != 0
+                ):
+                    raise HandshakeError("Invalid WELCOME from relay")
 
-    raise HandshakeError("Failed to bootstrap session after multiple attempts")
+                log.info(
+                    "Session bootstrapped (mode=%s, token=%s…)",
+                    carrier_mode,
+                    token[:8] if token else "?",
+                )
+                return SessionInfo(token, carrier_mode, base_url, host)
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await asyncio.sleep(1.0 + random.uniform(0.1, 0.5))
+            continue
+
+    raise HandshakeError("Failed to bootstrap session within deadline")
 
 
 def _extract_bootstrap(page_body: bytes, bridge_cap: str) -> Optional[str]:
@@ -339,11 +359,26 @@ class BaseCarrier(StreamManager, abc.ABC):
         self._clear_streams()
         if self._http and not self._http.closed:
             try:
+                if self._session_info and self._session_info.token:
+                    try:
+                        async with self._http.delete(
+                            f"{self._session_info.base_url}{SESSION_PATH}",
+                            headers={"Authorization": f"Bearer {self._session_info.token}"},
+                            ssl=self._ssl,
+                            timeout=aiohttp.ClientTimeout(total=2.0),
+                        ):
+                            pass
+                    except Exception:
+                        pass
                 await asyncio.shield(self._http.close())
             except (Exception, asyncio.CancelledError):
                 pass
         self._http = None
         self._session_info = None
+
+    async def grant_window(self, stream_id: int, amount: int) -> None:
+        """Grant WINDOW credit back to relay for stream_id."""
+        pass
 
     @abc.abstractmethod
     async def _start_transport(self) -> None:
